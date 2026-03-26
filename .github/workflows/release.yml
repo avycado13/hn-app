@@ -2,52 +2,72 @@ name: Cargo Build & Test
 
 on:
   push:
-  pull_request:
+    tags:
+      - 'v*.*.*'  # trigger only on version tags
 
-env: 
+env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build_and_test:
-    name: Rust project - latest
+  build:
+    name: Build Rust (${{ matrix.toolchain }}, ${{ matrix.BUILD_TARGET }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        toolchain:
-          - stable
-          - beta
-          - nightly
-        BUILD_TARGET: [release] # refers to a cargo profile
-    outputs:
-      release_built: ${{ steps.set-output.outputs.release_built }}
+        toolchain: [stable, beta, nightly]
+        BUILD_TARGET: [debug, release]
     steps:
       - uses: actions/checkout@v4
-      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      - run: cargo build --verbose
-      - name: Upload release artifact
-        uses: actions/upload-artifact@v4
+
+      - name: Set up Rust toolchain
+        uses: actions-rs/toolchain@v1
         with:
-          name: hn-app
-          path: target/${{ matrix.BUILD_TARGET }}/hn-app
+          toolchain: ${{ matrix.toolchain }}
+          profile: minimal
+          override: true
 
-      - name: Get latest tag
-        id: get_tag
-        run: |
-          TAG=$(git describe --tags --abbrev=0 || echo "v0.0.0")
-          echo "Latest tag is $TAG"
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
-
-      
-      - name: Publish built binary to GitHub releases
-        run: |
-          gh release create ${{ steps.get_tag.outputs.tag }} \
-            target/release/hn-app \
-            --generate-notes
-      - name: Cache
+      - name: Cache Cargo dependencies
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}  
+            target/${{ matrix.toolchain }}
+          key: ${{ runner.os }}-cargo-${{ matrix.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ matrix.toolchain }}-
+
+      - name: Build project
+        run: |
+          if [ "${{ matrix.BUILD_TARGET }}" == "release" ]; then
+            cargo build --release --verbose
+          else
+            cargo build --verbose
+          fi
+
+      - name: Upload artifact for workflow
+        uses: actions/upload-artifact@v4
+        with:
+          name: hn-app-${{ matrix.toolchain }}-${{ matrix.BUILD_TARGET }}
+          path: target/${{ matrix.BUILD_TARGET }}/hn-app
+
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') # only run on tags
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF##*/}"
+          echo "Creating release $TAG"
+          gh release create "$TAG" ./artifacts/* --generate-notes || echo "Release already exists, skipping"
