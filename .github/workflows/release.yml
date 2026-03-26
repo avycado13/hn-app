@@ -1,0 +1,53 @@
+name: Cargo Build & Test
+
+on:
+  push:
+  pull_request:
+
+env: 
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build_and_test:
+    name: Rust project - latest
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain:
+          - stable
+          - beta
+          - nightly
+        BUILD_TARGET: [release] # refers to a cargo profile
+    outputs:
+      release_built: ${{ steps.set-output.outputs.release_built }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+      - run: cargo build --verbose
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hn-app
+          path: target/${{ matrix.BUILD_TARGET }}/hn-app
+
+      - name: Get latest tag
+        id: get_tag
+        run: |
+          TAG=$(git describe --tags --abbrev=0 || echo "v0.0.0")
+          echo "Latest tag is $TAG"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      
+      - name: Publish built binary to GitHub releases
+      - run: |
+          gh release create ${{ steps.get_tag.outputs.tag }} \
+            target/release/hn-app \
+            --generate-notes
+      - name: Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}  
