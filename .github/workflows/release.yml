@@ -39,7 +39,7 @@ jobs:
 
       
       - name: Publish built binary to GitHub releases
-      - run: |
+        run: |
           gh release create ${{ steps.get_tag.outputs.tag }} \
             target/release/hn-app \
             --generate-notes
