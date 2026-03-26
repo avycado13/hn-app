@@ -26,9 +26,8 @@ impl HnApp {
 
         let mut items: Vec<Story> = Vec::new();
 
-        for id in top_ids.iter().take(10) {
-            let url =
-                format!("https://hacker-news.firebaseio.com/v0/item/{id}.json");
+        for id in top_ids.iter().take(30) {
+            let url = format!("https://hacker-news.firebaseio.com/v0/item/{id}.json");
 
             let story: Story = client
                 .get(&url)
@@ -47,25 +46,24 @@ impl HnApp {
 impl eframe::App for HnApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Top 10 Hacker News Stories");
+            ui.heading("Top 30 Hacker News Stories");
             ui.add_space(20.0);
-
-            for item in &self.items {
+             egui::ScrollArea::vertical()
+                .auto_shrink([false; 2])
+                .show(ui, |ui| {
+            for (i,item) in  self.items.iter().enumerate(){
                 ui.add_space(10.0);
-
                 ui.horizontal(|ui| {
-                    ui.hyperlink_to(
-                        &item.title,
-                        item.url
-                            .as_deref()
-                            .unwrap_or("https://news.ycombinator.com"),
-                    );
-ui.label(format!(
-            "⭐ {} points | 👤 {}",
-            item.score,
-            item.by
-        ));                });
-            }
+                    ui.label(format!("{}",i+1));
+                    ui.vertical(|ui| {
+                        ui.hyperlink_to(
+                            &item.title,
+                            item.url.as_deref().unwrap_or("https://news.ycombinator.com"),
+                        );
+                        ui.label(format!("⭐ {} points | 👤 {}", item.score, item.by));
+                    });
+                });
+            }});
         });
     }
 }
